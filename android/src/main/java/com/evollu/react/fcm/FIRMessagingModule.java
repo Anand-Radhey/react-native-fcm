@@ -230,7 +230,11 @@ public class FIRMessagingModule extends ReactContextBaseJavaModule implements Li
             @Override
             public void onReceive(Context context, Intent intent) {
                 if (getReactApplicationContext().hasActiveCatalystInstance()) {
-                    sendEvent("FCMNotificationReceived", Arguments.fromBundle(intent.getExtras()));
+		    try {
+                        sendEvent("FCMNotificationReceived", Arguments.fromBundle(intent.getExtras()));
+                    } catch (Exception e){
+                        Log.e(TAG, e.getMessage());
+                    }
                 }
             }
         }, intentFilter);
