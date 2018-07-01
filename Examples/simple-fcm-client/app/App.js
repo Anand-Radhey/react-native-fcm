@@ -9,50 +9,203 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
-  View
+  View,
+  Clipboard,
+  Platform
 } from 'react-native';
 
-import PushController from "./PushController";
+import FCM from "react-native-fcm";
+
+import {registerKilledListener, registerAppListener} from "./Listeners";
 import firebaseClient from  "./FirebaseClient";
+
+registerKilledListener();
 
 export default class App extends Component {
   constructor(props) {
     super(props);
 
     this.state = {
-      token: ""
+      token: "",
+      tokenCopyFeedback: ""
     }
   }
 
+  async componentDidMount(){
+    registerAppListener();
+    FCM.getInitialNotification().then(notif => {
+      this.setState({
+        initNotif: notif
+      })
+    });
+
+    try{
+      let result = await FCM.requestPermissions({badge: false, sound: true, alert: true});
+    } catch(e){
+      console.error(e);
+    }
+
+    FCM.getFCMToken().then(token => {
+      console.log("TOKEN (getFCMToken)", token);
+      this.setState({token: token || ""})
+    });
+
+    if(Platform.OS === 'ios'){
+      FCM.getAPNSToken().then(token => {
+        console.log("APNS TOKEN (getFCMToken)", token);
+      });
+    }
+  }
+
+  showLocalNotification() {
+    FCM.presentLocalNotification({
+      vibrate: 500,
+      title: 'Hello',
+      body: 'Test Notification',
+      big_text: 'i am large, i am large, i am large, i am large, i am large, i am large, i am large, i am large, i am large, i am large, i am large, i am large, i am large, i am large, i am large, i am large, i am large, i am large, i am large, i am large, i am large, i am large, i am large, i am large, i am large, i am large, i am large',
+      priority: "high",
+      sound: "bell.mp3",
+      large_icon: "https://image.freepik.com/free-icon/small-boy-cartoon_318-38077.jpg",
+      show_in_foreground: true,
+      number: 10
+    });
+  }
+
+  scheduleLocalNotification() {
+    FCM.scheduleLocalNotification({
+      id: 'testnotif',
+      fire_date: new Date().getTime()+5000,
+      vibrate: 500,
+      title: 'Hello',
+      body: 'Test Scheduled Notification',
+      sub_text: 'sub text',
+      priority: "high",
+      large_icon: "https://image.freepik.com/free-icon/small-boy-cartoon_318-38077.jpg",
+      show_in_foreground: true,
+      picture: 'https://firebase.google.com/_static/af7ae4b3fc/images/firebase/lockup.png'
+    });
+  }
+
+  sendRemoteNotification(token) {
+    let body;
+
+    if(Platform.OS === 'android'){
+      body = {
+        "to": token,
+      	"data":{
+					"custom_notification": {
+						"title": "Simple FCM Client",
+						"body": "This is a notification with only NOTIFICATION.",
+						"sound": "default",
+						"priority": "high",
+						"show_in_foreground": true
+        	}
+    		},
+    		"priority": 10
+      }
+    } else {
+			body = {
+				"to": token,
+				"notification":{
+					"title": "Simple FCM Client",
+					"body": "This is a notification with only NOTIFICATION.",
+					"sound": "default"
+				},
+				"priority": 10
+			}
+		}
+
+    firebaseClient.send(JSON.stringify(body), "notification");
+  }
+
+  sendRemoteData(token) {
+    let body = {
+    	"to": token,
+      "data":{
+    		"title": "Simple FCM Client",
+    		"body": "This is a notification with only DATA.",
+    		"sound": "default"
+    	},
+    	"priority": "normal"
+    }
+
+    firebaseClient.send(JSON.stringify(body), "data");
+  }
+
+  sendRemoteNotificationWithData(token) {
+    let body = {
+      "to": token,
+      "notification":{
+    		"title": "Simple FCM Client",
+    		"body": "This is a notification with NOTIFICATION and DATA (NOTIF).",
+				"sound": "default"
+    	},
+    	"data":{
+    		"hello": "there"
+    	},
+    	"priority": "high"
+    }
+
+    firebaseClient.send(JSON.stringify(body), "notification-data");
+  }
+
   render() {
-    let { token } = this.state;
+    let { token, tokenCopyFeedback } = this.state;
 
     return (
       <View style={styles.container}>
-        <PushController
-          onChangeToken={token => this.setState({token: token || ""})}
-        />
         <Text style={styles.welcome}>
           Welcome to Simple Fcm Client!
         </Text>
 
-        <Text style={styles.instructions}>
+        <Text>
+          Init notif: {JSON.stringify(this.state.initNotif)}
+
+        </Text>
+
+        <Text selectable={true} onPress={() => this.setClipboardContent(this.state.token)} style={styles.instructions}>
           Token: {this.state.token}
         </Text>
 
-        <TouchableOpacity onPress={() => firebaseClient.sendNotification(token)} style={styles.button}>
-          <Text style={styles.buttonText}>Send Notification</Text>
+        <Text style={styles.feedback}>
+          {this.state.tokenCopyFeedback}
+        </Text>
+
+        <Text style={styles.feedback}>
+          Remote notif won't be available to iOS emulators
+        </Text>
+
+        <TouchableOpacity onPress={() => this.sendRemoteNotification(token)} style={styles.button}>
+          <Text style={styles.buttonText}>Send Remote Notification</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={() => firebaseClient.sendData(token)} style={styles.button}>
-          <Text style={styles.buttonText}>Send Data</Text>
+        <TouchableOpacity onPress={() => this.sendRemoteData(token)} style={styles.button}>
+          <Text style={styles.buttonText}>Send Remote Data</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={() => firebaseClient.sendNotificationWithData(token)} style={styles.button}>
-          <Text style={styles.buttonText}>Send Notification With Data</Text>
+        <TouchableOpacity onPress={() => this.sendRemoteNotificationWithData(token)} style={styles.button}>
+          <Text style={styles.buttonText}>Send Remote Notification With Data</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity onPress={() => this.showLocalNotification()} style={styles.button}>
+          <Text style={styles.buttonText}>Send Local Notification</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity onPress={() => this.scheduleLocalNotification()} style={styles.button}>
+          <Text style={styles.buttonText}>Schedule Notification in 5s</Text>
         </TouchableOpacity>
       </View>
     );
+  }
+
+  setClipboardContent(text) {
+    Clipboard.setString(text);
+    this.setState({tokenCopyFeedback: "Token copied to clipboard."});
+    setTimeout(() => {this.clearTokenCopyFeedback()}, 2000);
+  }
+
+  clearTokenCopyFeedback() {
+    this.setState({tokenCopyFeedback: ""});
   }
 }
 
@@ -71,7 +224,12 @@ const styles = StyleSheet.create({
   instructions: {
     textAlign: 'center',
     color: '#333333',
-    marginBottom: 5,
+    marginBottom: 2,
+  },
+  feedback: {
+    textAlign: 'center',
+    color: '#996633',
+    marginBottom: 3,
   },
   button: {
     backgroundColor: "teal",
